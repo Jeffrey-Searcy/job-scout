@@ -4,6 +4,7 @@ import { getStats, getApplications, getLeads } from "./api/client.js";
 import StatTiles from "./components/StatTiles.jsx";
 import PipelineFunnel from "./components/PipelineFunnel.jsx";
 import Filters from "./components/Filters.jsx";
+import Sort from "./components/Sort.jsx";
 import ApplicationCard from "./components/ApplicationCard.jsx";
 import ApplicationForm from "./components/ApplicationForm.jsx";
 import LeadsInbox from "./components/LeadsInbox.jsx";
@@ -14,6 +15,40 @@ function rank(a) {
   const fitWeight = a.fit === "strong" ? 0 : a.fit === "good" ? 0.3 : 0.6;
   return (a.is_active ? 0 : 1) + fitWeight + (a.is_local ? -0.15 : 0);
 }
+
+// Rank a status for the "Status" sort: open/earlier stages first, closed last.
+// Lower number sorts first, so live applications stay above rejected/ghosted.
+const STATUS_ORDER = {
+  offer: 0, onsite: 1, interview: 2, take_home: 3, phone_screen: 4,
+  applied: 5, ghosted: 6, rejected: 7,
+};
+
+// A blank applied_date sorts to the very bottom in both date directions, so
+// undated cards never jump above dated ones. We treat missing as +/-Infinity.
+function appliedTime(a) {
+  return a.applied_date ? new Date(a.applied_date + "T00:00:00").getTime() : null;
+}
+
+// Comparators for each Sort option key. Each returns a standard (x,y)=>number.
+const SORTERS = {
+  best: (x, y) => rank(x) - rank(y),
+  newest: (x, y) => {
+    const tx = appliedTime(x), ty = appliedTime(y);
+    if (tx === null && ty === null) return 0;
+    if (tx === null) return 1;   // undated after dated
+    if (ty === null) return -1;
+    return ty - tx;              // most recent first
+  },
+  oldest: (x, y) => {
+    const tx = appliedTime(x), ty = appliedTime(y);
+    if (tx === null && ty === null) return 0;
+    if (tx === null) return 1;   // undated still last
+    if (ty === null) return -1;
+    return tx - ty;              // earliest first
+  },
+  status: (x, y) =>
+    (STATUS_ORDER[x.status] ?? 99) - (STATUS_ORDER[y.status] ?? 99),
+};
 
 // Decide whether a card passes the active filter chip.
 function matchesFilter(app, filter) {
@@ -29,6 +64,7 @@ export default function App() {
   const [apps, setApps] = useState([]);
   const [leads, setLeads] = useState([]);
   const [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState("best");
   const [error, setError] = useState(null);
   // Form state: null = closed, "new" = add, or an app object = edit.
   const [formTarget, setFormTarget] = useState(null);
@@ -49,11 +85,12 @@ export default function App() {
   // Close the form and refresh after a successful save/delete.
   const onSaved = useCallback(() => { setFormTarget(null); refresh(); }, [refresh]);
 
-  // Sort + filter the applications for display, memoized on inputs.
-  const visible = useMemo(
-    () => [...apps].sort((x, y) => rank(x) - rank(y)).filter((a) => matchesFilter(a, filter)),
-    [apps, filter]
-  );
+  // Filter, then sort the applications for display, memoized on inputs.
+  // Filtering first keeps the sort working on only the visible set.
+  const visible = useMemo(() => {
+    const sorter = SORTERS[sort] || SORTERS.best;
+    return [...apps].filter((a) => matchesFilter(a, filter)).sort(sorter);
+  }, [apps, filter, sort]);
 
   return (
     <div className="wrap">
@@ -75,7 +112,10 @@ export default function App() {
           <h2>Applications</h2>
           <button className="btn" onClick={() => setFormTarget("new")}>+ Add application</button>
         </div>
-        <Filters value={filter} onChange={setFilter} />
+        <div className="controls">
+          <Filters value={filter} onChange={setFilter} />
+          <Sort value={sort} onChange={setSort} />
+        </div>
         <div className="grid">
           {visible.map((app) => (
             <ApplicationCard key={app.id} app={app} onEdit={setFormTarget} onChanged={refresh} />

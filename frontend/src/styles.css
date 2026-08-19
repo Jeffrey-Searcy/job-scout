@@ -29,7 +29,8 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px;}
   background:var(--accent-soft);color:var(--accent);border-radius:999px;font-size:13px;font-weight:600;}
 .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 22%,transparent);}
 .errbar{background:#fdecea;color:#8a2b20;border-radius:10px;padding:12px 14px;margin:12px 0;font-size:14px;font-weight:600;}
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0;}
+/* auto-fit lets the tile row hold 4 or 6 KPIs and wrap cleanly on narrow screens */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0;}
 @media(max-width:720px){.tiles{grid-template-columns:repeat(2,1fr)}}
 .tile{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 16px 14px;box-shadow:var(--shadow);}
 .tile .n{font-size:30px;font-weight:750;letter-spacing:-.02em;line-height:1;}
@@ -43,11 +44,17 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px;}
 .stage .track{height:26px;background:var(--bg);border-radius:7px;overflow:hidden;}
 .stage .fill{height:100%;border-radius:7px;transition:width .6s cubic-bezier(.2,.7,.3,1);min-width:3px;display:block;}
 .stage .c{font-size:14px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums;}
-.filters{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 16px;}
+/* Filters (left) + Sort (right) share one row above the application grid. */
+.controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:4px 0 16px;}
+.filters{display:flex;gap:8px;flex-wrap:wrap;}
 .chip{border:1px solid var(--border);background:var(--card);color:var(--ink2);
   padding:7px 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;}
 .chip:hover{border-color:var(--accent);color:var(--accent);}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+.sort{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);}
+.sort .sort-l{font-weight:600;}
+.sort select{border:1px solid var(--border);background:var(--card);color:var(--ink2);
+  padding:6px 10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
 @media(max-width:720px){.grid{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:15px 15px 13px;box-shadow:var(--shadow);
@@ -68,6 +75,8 @@ h1{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 4px;}
 .statusSel.active{background:var(--active-bg);color:var(--active);border-color:var(--active);}
 .meta{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12.5px;color:var(--ink2);}
 .meta b{color:var(--ink);font-weight:600;}
+/* The applied-date line sits just under the main meta row, a touch dimmer. */
+.meta.applied{margin-top:4px;color:var(--muted);font-size:12px;}
 .note{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--border);padding-top:9px;}
 .row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:2px;}
 a.apply{font-size:12.5px;font-weight:700;color:var(--accent);text-decoration:none;}

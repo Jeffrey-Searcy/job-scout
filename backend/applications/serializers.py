@@ -1,4 +1,5 @@
 """DRF serializers: translate model instances to/from JSON for the REST API."""
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import JobApplication, JobLead, AgentTask, Status, LeadStatus
@@ -13,6 +14,20 @@ class JobApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = JobApplication
         fields = "__all__"
+
+    def validate(self, attrs):
+        """Default applied_date to today when a new application lacks one.
+
+        Every create path (the enrich flow behind "Add from link", the MCP tool,
+        a manual add) runs through here, so filing a job you've applied to always
+        gets a date to sort by — without the caller having to remember to set it.
+        We only fill it on create (self.instance is None) and never overwrite a
+        date the user typed. A row explicitly created as a lead you haven't applied
+        to yet still gets today's date, which is the sensible "filed on" stamp.
+        """
+        if self.instance is None and not attrs.get("applied_date"):
+            attrs["applied_date"] = timezone.localdate()
+        return attrs
 
 
 class JobLeadSerializer(serializers.ModelSerializer):

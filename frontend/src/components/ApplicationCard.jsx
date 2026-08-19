@@ -83,6 +83,9 @@ export default function ApplicationCard({ app, onEdit, onChanged }) {
         <span>{[app.work_mode !== "unknown" ? capitalize(app.work_mode) : null, app.location].filter(Boolean).join(" · ")}</span>
         {app.salary_display && <span><b>{app.salary_display}</b></span>}
       </div>
+      <div className="meta applied">
+        <span>{app.applied_date ? `Applied ${formatApplied(app.applied_date)}` : "No applied date set"}</span>
+      </div>
       {app.contact && <div className="note">{app.contact}</div>}
 
       <div className="row">
@@ -98,4 +101,11 @@ export default function ApplicationCard({ app, onEdit, onChanged }) {
 // Capitalize a work-mode label ("remote" -> "Remote").
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// Format an ISO date string ("2026-03-04") as a short human date ("Mar 4, 2026").
+// The "T00:00:00" anchor forces local time so the day never shifts by a timezone.
+function formatApplied(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
