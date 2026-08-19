@@ -16,20 +16,13 @@ function rank(a) {
   return (a.is_active ? 0 : 1) + fitWeight + (a.is_local ? -0.15 : 0);
 }
 
-// Rank a status for the "Status" sort: open/earlier stages first, closed last.
-// Lower number sorts first, so live applications stay above rejected/ghosted.
-const STATUS_ORDER = {
-  offer: 0, onsite: 1, interview: 2, take_home: 3, phone_screen: 4,
-  applied: 5, ghosted: 6, rejected: 7,
-};
-
 // A blank applied_date sorts to the very bottom in both date directions, so
-// undated cards never jump above dated ones. We treat missing as +/-Infinity.
+// undated cards never jump above dated ones. We treat missing as null.
 function appliedTime(a) {
   return a.applied_date ? new Date(a.applied_date + "T00:00:00").getTime() : null;
 }
 
-// Comparators for each Sort option key. Each returns a standard (x,y)=>number.
+// Comparators for the "Sort by" views. Each returns a standard (x,y)=>number.
 const SORTERS = {
   best: (x, y) => rank(x) - rank(y),
   newest: (x, y) => {
@@ -46,8 +39,16 @@ const SORTERS = {
     if (ty === null) return -1;
     return tx - ty;              // earliest first
   },
-  status: (x, y) =>
-    (STATUS_ORDER[x.status] ?? 99) - (STATUS_ORDER[y.status] ?? 99),
+};
+
+// The "Show only" views: each maps a view key to the raw statuses it includes.
+// "interviewing" groups every in-process stage. A view not listed here is a
+// sort view, not a filter, so it shows all statuses.
+const STATUS_VIEW = {
+  applied: ["applied"],
+  interviewing: ["phone_screen", "interview", "take_home", "onsite"],
+  offer: ["offer"],
+  rejected: ["rejected"],
 };
 
 // Decide whether a card passes the active filter chip.
@@ -64,7 +65,9 @@ export default function App() {
   const [apps, setApps] = useState([]);
   const [leads, setLeads] = useState([]);
   const [filter, setFilter] = useState("all");
-  const [sort, setSort] = useState("best");
+  // The View dropdown value: a sort key (best/newest/oldest) OR a status view
+  // key (applied/interviewing/offer/rejected). See SORTERS and STATUS_VIEW.
+  const [view, setView] = useState("best");
   const [error, setError] = useState(null);
   // Form state: null = closed, "new" = add, or an app object = edit.
   const [formTarget, setFormTarget] = useState(null);
@@ -85,12 +88,18 @@ export default function App() {
   // Close the form and refresh after a successful save/delete.
   const onSaved = useCallback(() => { setFormTarget(null); refresh(); }, [refresh]);
 
-  // Filter, then sort the applications for display, memoized on inputs.
-  // Filtering first keeps the sort working on only the visible set.
+  // Build the visible list, memoized on inputs. Order of operations:
+  //   1. Apply the chip filter (All/Active/Local/Strong fit).
+  //   2. If the View is a "show only" status view, keep just those statuses.
+  //   3. Sort: by the chosen sort view, or Best match when a status view is on.
   const visible = useMemo(() => {
-    const sorter = SORTERS[sort] || SORTERS.best;
-    return [...apps].filter((a) => matchesFilter(a, filter)).sort(sorter);
-  }, [apps, filter, sort]);
+    const statuses = STATUS_VIEW[view];            // undefined for sort views
+    const sorter = SORTERS[view] || SORTERS.best;  // status views fall back to best
+    return [...apps]
+      .filter((a) => matchesFilter(a, filter))
+      .filter((a) => (statuses ? statuses.includes(a.status) : true))
+      .sort(sorter);
+  }, [apps, filter, view]);
 
   return (
     <div className="wrap">
@@ -114,7 +123,7 @@ export default function App() {
         </div>
         <div className="controls">
           <Filters value={filter} onChange={setFilter} />
-          <Sort value={sort} onChange={setSort} />
+          <Sort value={view} onChange={setView} />
         </div>
         <div className="grid">
           {visible.map((app) => (
