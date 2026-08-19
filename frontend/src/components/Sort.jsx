@@ -7,11 +7,13 @@ import React from "react";
 // The selectable views. `kind` tells App whether a choice sorts or filters:
 //   - "sort"   -> reorder the visible cards (App's SORTERS map)
 //   - "status" -> show only apps whose stage maps to this key (App's STATUS_VIEW)
-// Keeping both in one menu matches how the user thinks about it: "show me …".
+//   - "date"   -> show only apps matching a date rule (App's DATE_VIEW)
+// Keeping them in one menu matches how the user thinks about it: "show me …".
 export const VIEW_OPTIONS = [
   { key: "best", label: "Best match", kind: "sort" },
   { key: "newest", label: "Newest applied", kind: "sort" },
   { key: "oldest", label: "Oldest applied", kind: "sort" },
+  { key: "today", label: "Applied today", kind: "date" },
   { key: "applied", label: "Applied only", kind: "status" },
   { key: "interviewing", label: "Interviewing", kind: "status" },
   { key: "offer", label: "Offers", kind: "status" },
@@ -29,7 +31,7 @@ export default function Sort({ value, onChange }) {
           ))}
         </optgroup>
         <optgroup label="Show only">
-          {VIEW_OPTIONS.filter((o) => o.kind === "status").map((o) => (
+          {VIEW_OPTIONS.filter((o) => o.kind === "status" || o.kind === "date").map((o) => (
             <option key={o.key} value={o.key}>{o.label}</option>
           ))}
         </optgroup>

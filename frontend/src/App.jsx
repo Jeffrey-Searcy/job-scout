@@ -41,14 +41,29 @@ const SORTERS = {
   },
 };
 
-// The "Show only" views: each maps a view key to the raw statuses it includes.
-// "interviewing" groups every in-process stage. A view not listed here is a
-// sort view, not a filter, so it shows all statuses.
+// The "Show only" status views: each maps a view key to the raw statuses it
+// includes. "interviewing" groups every in-process stage. A view not listed
+// here (and not in DATE_VIEW) is a sort view, so it shows all statuses.
 const STATUS_VIEW = {
   applied: ["applied"],
   interviewing: ["phone_screen", "interview", "take_home", "onsite"],
   offer: ["offer"],
   rejected: ["rejected"],
+};
+
+// Today's date as a local "YYYY-MM-DD" string, to compare against applied_date
+// (which the API stores in that same plain-date form). Built from local time so
+// "today" matches the user's calendar day, not UTC.
+function todayISO() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+// The "Show only" date views: each maps a view key to a predicate over an app.
+const DATE_VIEW = {
+  today: (a) => a.applied_date === todayISO(),
 };
 
 // Decide whether a card passes the active filter chip.
@@ -90,14 +105,16 @@ export default function App() {
 
   // Build the visible list, memoized on inputs. Order of operations:
   //   1. Apply the chip filter (All/Active/Local/Strong fit).
-  //   2. If the View is a "show only" status view, keep just those statuses.
-  //   3. Sort: by the chosen sort view, or Best match when a status view is on.
+  //   2. If the View is a "show only" status or date view, keep just its matches.
+  //   3. Sort: by the chosen sort view, or Best match when a show-only view is on.
   const visible = useMemo(() => {
-    const statuses = STATUS_VIEW[view];            // undefined for sort views
-    const sorter = SORTERS[view] || SORTERS.best;  // status views fall back to best
+    const statuses = STATUS_VIEW[view];            // undefined for non-status views
+    const datePred = DATE_VIEW[view];              // undefined for non-date views
+    const sorter = SORTERS[view] || SORTERS.best;  // show-only views fall back to best
     return [...apps]
       .filter((a) => matchesFilter(a, filter))
       .filter((a) => (statuses ? statuses.includes(a.status) : true))
+      .filter((a) => (datePred ? datePred(a) : true))
       .sort(sorter);
   }, [apps, filter, view]);
 
