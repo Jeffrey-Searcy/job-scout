@@ -1,0 +1,6 @@
+# Describe the candidate the scout should hunt for. Copy this to scout_profile.txt
+# and edit. Cover: experience level, target titles, core stack, and locations/modes.
+A software engineer with ~2 years experience (junior-mid). Target titles: Software
+Engineer I/II, Full-Stack, DevOps/Platform, Backend. Core stack: Python, JavaScript/
+TypeScript, React, SQL, Docker, CI/CD. Prioritize <your metro> hybrid/onsite, then
+strong remote-US fits. Avoid senior/staff (5+ yrs) unless a perfect match.

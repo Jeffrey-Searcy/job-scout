@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.sqlite3
+staticfiles/
+# Node
+node_modules/
+dist/
+# Env / secrets
+.env
+# OS
+.DS_Store
+
+# Personal config / local state (never commit)
+scout_profile.txt
+mcp-server/venv/
+**/venv/
+*.zip
+# Local agent/editor config (machine-specific paths)
+.codex/
+.claude/

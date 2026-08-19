@@ -1,0 +1,43 @@
+# One-command local stack: Postgres + Django API + React (nginx) frontend.
+# Usage:  cp .env.example .env  &&  docker compose up --build
+# Then open http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jobscout}
+      POSTGRES_USER: ${POSTGRES_USER:-jobscout}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobscout}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobscout}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"   # Django API (host port configurable)
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Personalize by setting APP_TITLE in .env; defaults to "Job Scout".
+        VITE_APP_TITLE: ${APP_TITLE:-Job Scout}
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"    # Dashboard (host port configurable)
+
+volumes:
+  pgdata:

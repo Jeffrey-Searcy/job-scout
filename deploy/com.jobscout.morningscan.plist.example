@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Weekday-morning auto-scan for macOS. Copy to
+     ~/Library/LaunchAgents/com.jobscout.morningscan.plist, replace the two
+     __PLACEHOLDERS__, then: launchctl load ~/Library/LaunchAgents/com.jobscout.morningscan.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.jobscout.morningscan</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__PROJECT_DIR__/scripts/morning_scan.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>JOBSCOUT_API_URL</key><string>__API_URL__</string>
+  </dict>
+  <!-- Weekdays (Mon=1 .. Fri=5) at 8:00 AM local time. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardErrorPath</key><string>/tmp/jobscout-morningscan.log</string>
+</dict>
+</plist>
