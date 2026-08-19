@@ -13,6 +13,7 @@ dist/
 
 # Personal config / local state (never commit)
 scout_profile.txt
+resume.pdf
 mcp-server/venv/
 **/venv/
 *.zip

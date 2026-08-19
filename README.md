@@ -70,11 +70,22 @@ If a port is already taken, change `BACKEND_PORT` / `FRONTEND_PORT` and rebuild.
 The scan/enrich buttons are powered by **Claude Code** on your machine (your Pro or
 Max subscription — no API key). Three one-time steps:
 
-**1. Describe who you are.** Copy the profile template and edit it:
+**1. Describe who you are.** Two ways — pick one:
+
+*Option A — write a short profile.* Copy the template and edit it:
 
 ```bash
 cp scout_profile.example.txt scout_profile.txt   # then edit (gitignored)
 ```
+
+*Option B — drop in your resume.* Save your resume as `resume.pdf` in the
+project root (gitignored). The first time the worker runs, it uses Claude Code to
+read the PDF and write a search profile into `scout_profile.txt` for you — after
+that it reuses the cached profile, so scans stay fast. To re-distill after
+updating your resume, delete `scout_profile.txt` and run the worker again.
+
+Loading order: `SCOUT_PROFILE` env var → `scout_profile.txt` → `resume.pdf` →
+a generic default.
 
 **2. Register the MCP server with Claude Code** (see `mcp-server/README.md`),
 pointing it at your API, e.g. `JOBSCOUT_API_URL=http://localhost:8000/api`.
@@ -127,14 +138,16 @@ job-scout/
 ├── mcp-server/               stdio MCP server (API-first wrapper)
 ├── agent_worker.py           host worker that runs Claude Code for scan/enrich
 ├── scripts/ · deploy/        morning auto-scan helper + launchd template
-└── scout_profile.example.txt profile template (copy to scout_profile.txt)
+└── scout_profile.example.txt profile template (copy to scout_profile.txt,
+                                or drop in resume.pdf to auto-generate one)
 ```
 
 ## Privacy
 
-Your data lives only in your local Postgres volume. `scout_profile.txt`, `.env`,
-and any `*.zip` are gitignored, so your profile, secrets, and exports never enter
-version control. The committed seed data is fictional placeholder data.
+Your data lives only in your local Postgres volume. `scout_profile.txt`,
+`resume.pdf`, `.env`, and any `*.zip` are gitignored, so your profile, resume,
+secrets, and exports never enter version control. The committed seed data is
+fictional placeholder data.
 
 ## License
 

@@ -49,24 +49,85 @@ ALLOWED_TOOLS = ",".join([
 ])
 
 # The candidate profile the scan targets. Loaded (in priority order) from the
-# SCOUT_PROFILE env var, then a local scout_profile.txt beside this script, then a
-# generic placeholder. Keep your real profile in scout_profile.txt (gitignored).
+# SCOUT_PROFILE env var, then a cached scout_profile.txt, then — if you dropped a
+# resume.pdf beside this script — a profile distilled from that resume (written
+# back to scout_profile.txt so it is only distilled once), then a generic
+# placeholder. Keep your real profile/resume out of git (both are gitignored).
 _DEFAULT_PROFILE = (
     "A software engineer seeking roles that match their stack and level. "
     "Set SCOUT_PROFILE or create scout_profile.txt to describe your experience, "
     "target titles/levels, core stack, and preferred locations/work modes."
 )
 
+# Where the cached text profile and the optional drop-in resume live. Both sit
+# beside this script and are gitignored, so a candidate's real data never ships.
+PROFILE_PATH = os.path.join(PROJECT_ROOT, "scout_profile.txt")
+RESUME_PATH = os.path.join(PROJECT_ROOT, "resume.pdf")
+
+
+def distill_resume_to_profile(resume_path, out_path):
+    """Read a resume PDF with Claude Code and write a tight search profile.
+
+    Why Claude instead of a Python PDF parser: the worker is intentionally
+    stdlib-only (nothing to pip-install), and Claude Code can already read a PDF
+    directly. We distill ONCE and cache the result to out_path, so later scans
+    reuse the short profile and never re-read the whole PDF (which would be slow).
+
+    Returns the distilled profile string. Raises on failure — we never silently
+    fall back to a wrong/empty profile, since that would send the scan hunting
+    for the wrong candidate. The caller decides what to do with the error.
+    """
+    prompt = (
+        "Read the resume PDF at this path: " + resume_path + "\n"
+        "Write a concise job-search profile (5-8 sentences, plain prose, no "
+        "preamble) that a scout can use to find matching roles. Cover: years of "
+        "experience and level (junior/mid/senior), target job titles, core "
+        "technical stack, notable domains, and preferred locations plus work mode "
+        "(onsite/hybrid/remote). Output ONLY the profile text — no headings, no "
+        "'Here is', no bullet list."
+    )
+    # This call only reads a local file; no MCP tools or web access needed.
+    cmd = [
+        CLAUDE_BIN, "-p", prompt,
+        "--output-format", "text",
+        "--allowedTools", "Read",
+        "--permission-mode", "acceptEdits",
+    ]
+    if os.environ.get("CLAUDE_DANGEROUS") == "1":
+        cmd.append("--dangerously-skip-permissions")
+    proc = subprocess.run(
+        cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "claude exited non-zero while reading resume")
+    profile = proc.stdout.strip()
+    if not profile:
+        raise RuntimeError("resume distillation produced an empty profile")
+    with open(out_path, "w") as f:
+        f.write(profile + "\n")
+    print(f"Distilled resume.pdf -> scout_profile.txt ({len(profile)} chars)")
+    return profile
+
 
 def load_profile():
-    """Return the candidate profile string from env, file, or a default."""
+    """Return the candidate profile string from env, cache, resume, or default.
+
+    Precedence:
+      1. SCOUT_PROFILE env var (explicit override).
+      2. scout_profile.txt (the cache; also where a distilled resume lands).
+      3. resume.pdf, distilled once into scout_profile.txt.
+      4. A generic placeholder.
+    """
     env = os.environ.get("SCOUT_PROFILE")
     if env:
         return env.strip()
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scout_profile.txt")
-    if os.path.exists(path):
-        with open(path) as f:
+    if os.path.exists(PROFILE_PATH):
+        with open(PROFILE_PATH) as f:
             return f.read().strip()
+    if os.path.exists(RESUME_PATH):
+        # No cached profile yet, but a resume is present: distill it once. Let a
+        # failure surface loudly rather than silently scanning for no one.
+        return distill_resume_to_profile(RESUME_PATH, PROFILE_PATH)
     return _DEFAULT_PROFILE
 
 
@@ -93,19 +154,17 @@ def build_prompt(task):
     """Turn a task into a precise instruction for Claude Code."""
     if task["kind"] == "scan":
         return (
-            "You have the job-scout MCP tools. FIRST, call mcp__job-scout__list_applications "
-            "and mcp__job-scout__list_leads to see what is already in the pipeline and inbox. "
-            "You must NOT re-suggest any role already there: skip a match if the same company "
-            "appears with the same or a very similar role, or if the apply URL matches one that "
-            "already exists. The candidate has already applied to those — surfacing them again is a bug.\n"
-            "THEN search the web (LinkedIn, Indeed, Greenhouse, Lever, company sites) for NEW "
-            "roles matching this profile:\n"
+            "You have the job-scout MCP tools. Search the web (LinkedIn, Indeed, "
+            "Greenhouse, Lever, company sites) for NEW roles matching this profile:\n"
             f"{PROFILE}\n"
-            f"Add each good, not-already-present match (up to {SCAN_MAX_LEADS}, prioritizing recent "
+            f"Add each good match (up to {SCAN_MAX_LEADS}, prioritizing recent "
             "postings) by calling mcp__job-scout__add_lead with company, title, url, location, work_mode "
             "(onsite/hybrid/remote), salary_text, source, summary (one-line why-it-fits), "
             "and is_local=true for the candidate's local metro. Skip senior/staff (5+ yrs) unless a "
             "perfect match.\n"
+            "Do NOT spend time cross-checking your finds against the existing pipeline: the API "
+            "automatically rejects any posting already applied to or already in the inbox (you will "
+            "get an error on add_lead for those, which is expected — just move on to the next).\n"
             "LINK QUALITY: use the DIRECT apply URL on the company's own careers site or its ATS "
             "(Greenhouse/Lever/Workday/Ashby/SmartRecruiters/iCIMS), NOT aggregator links (Built In, "
             "ZipRecruiter, Indeed, Glassdoor). If found via an aggregator, follow through to the "
