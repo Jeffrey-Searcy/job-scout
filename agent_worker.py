@@ -32,9 +32,11 @@ POLL_SECONDS = 4
 # Verifying each posting is a direct, still-open link is slow, so give the
 # headless Claude Code run a generous ceiling. Override with CLAUDE_TIMEOUT.
 CLAUDE_TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT", "600"))
-# How many leads a single scan aims for. Kept modest so link verification for
-# every one fits inside CLAUDE_TIMEOUT. Override with SCAN_MAX_LEADS.
-SCAN_MAX_LEADS = int(os.environ.get("SCAN_MAX_LEADS", "5"))
+# How many leads a single scan aims for. Kept small so following each posting to
+# its canonical link and confirming it's still open fits inside CLAUDE_TIMEOUT.
+# Scans that aimed for 5 kept getting killed at the ceiling; 3 finishes cleanly.
+# Override with SCAN_MAX_LEADS.
+SCAN_MAX_LEADS = int(os.environ.get("SCAN_MAX_LEADS", "3"))
 
 # Tools Claude Code is pre-authorized to use so it runs unattended.
 ALLOWED_TOOLS = ",".join([
@@ -157,8 +159,12 @@ def build_prompt(task):
             "You have the job-scout MCP tools. Search the web (LinkedIn, Indeed, "
             "Greenhouse, Lever, company sites) for NEW roles matching this profile:\n"
             f"{PROFILE}\n"
-            f"Add each good match (up to {SCAN_MAX_LEADS}, prioritizing recent "
-            "postings) by calling mcp__job-scout__add_lead with company, title, url, location, work_mode "
+            f"Find up to {SCAN_MAX_LEADS} good matches, prioritizing recent postings. "
+            "IMPORTANT — work one lead at a time and SAVE AS YOU GO: as soon as you have "
+            "verified a single role, immediately call mcp__job-scout__add_lead for it before "
+            "you start looking for the next one. Do not batch them up to save at the end — if "
+            "this run is cut short, every lead you already saved must already be in the inbox.\n"
+            "Call mcp__job-scout__add_lead with company, title, url, location, work_mode "
             "(onsite/hybrid/remote), salary_text, source, summary (one-line why-it-fits), "
             "and is_local=true for the candidate's local metro. Skip senior/staff (5+ yrs) unless a "
             "perfect match.\n"
@@ -187,6 +193,15 @@ def build_prompt(task):
     return "Unknown task; do nothing and reply 'skipped'."
 
 
+class ClaudeTimeout(Exception):
+    """Raised when the headless Claude Code run exceeds CLAUDE_TIMEOUT.
+
+    Kept distinct from a normal RuntimeError so the caller can treat a timeout as
+    a possible PARTIAL success (a scan may have already saved some leads before it
+    was killed) rather than a flat failure.
+    """
+
+
 def run_claude(prompt):
     """Invoke Claude Code headless with the MCP + web tools; return its text output."""
     cmd = [
@@ -197,21 +212,67 @@ def run_claude(prompt):
     ]
     if os.environ.get("CLAUDE_DANGEROUS") == "1":
         cmd.append("--dangerously-skip-permissions")
-    proc = subprocess.run(cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT)
+    try:
+        proc = subprocess.run(
+            cmd, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT
+        )
+    except subprocess.TimeoutExpired:
+        # Surface as our own type so handle() can check for leads saved before the kill.
+        raise ClaudeTimeout(f"claude run exceeded {CLAUDE_TIMEOUT}s")
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or "claude exited non-zero")
     return proc.stdout.strip()
 
 
+def lead_count():
+    """Return how many leads currently exist, or None if the API can't be read.
+
+    Used to detect a scan's partial progress after a timeout. Returns None (not 0)
+    on any read failure, so a failed count is never mistaken for 'no leads added'.
+    """
+    try:
+        data = api_get("/leads/")
+        rows = data if isinstance(data, list) else data.get("results", [])
+        return len(rows)
+    except Exception:  # noqa: BLE001 - a count we can't read is 'unknown', not zero
+        return None
+
+
 def handle(task):
-    """Process one task end to end, updating its status/result as it goes."""
+    """Process one task end to end, updating its status/result as it goes.
+
+    Scans save leads incrementally, so a run that times out may still have added
+    real leads. We snapshot the lead count before a scan starts; if the run then
+    times out, we compare counts and report those leads as a partial success (a
+    'done' with a note) rather than a scary 'error' that hides them.
+    """
     tid = task["id"]
+    # Snapshot lead count before a scan so a later timeout can be judged partial.
+    leads_before = lead_count() if task["kind"] == "scan" else None
     api_patch(f"/agent-tasks/{tid}/", {"status": "running"})
     try:
         result = run_claude(build_prompt(task))
         api_patch(f"/agent-tasks/{tid}/", {"status": "done", "result": result[:4000]})
         print(f"[task {tid}] done: {result[:120]}")
-    except Exception as e:  # noqa: BLE001 - report any failure back to the UI
+    except ClaudeTimeout as e:
+        # Did the scan save anything before it was killed? If so, that's a partial
+        # win, not a failure. Only usable when we have both before/after counts.
+        added = None
+        if leads_before is not None:
+            leads_after = lead_count()
+            if leads_after is not None:
+                added = leads_after - leads_before
+        if added and added > 0:
+            note = (f"Added {added} lead(s), then the run hit the {CLAUDE_TIMEOUT}s "
+                    "limit before finishing. Your new leads are in the inbox.")
+            api_patch(f"/agent-tasks/{tid}/", {"status": "done", "result": note})
+            print(f"[task {tid}] partial: {note}")
+        else:
+            # Timed out with nothing to show for it — that IS a failure, report it.
+            msg = f"Timed out after {CLAUDE_TIMEOUT}s with no leads added."
+            api_patch(f"/agent-tasks/{tid}/", {"status": "error", "result": msg})
+            print(f"[task {tid}] error: {msg}")
+    except Exception as e:  # noqa: BLE001 - report any other failure back to the UI
         api_patch(f"/agent-tasks/{tid}/", {"status": "error", "result": str(e)[:4000]})
         print(f"[task {tid}] error: {e}")
 
