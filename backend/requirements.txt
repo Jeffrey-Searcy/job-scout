@@ -4,3 +4,5 @@ django-cors-headers==4.3.1
 psycopg2-binary==2.9.9
 gunicorn==22.0.0
 django-environ==0.11.2
+# Builds the ATS-safe .docx for tailored resumes (see docx_builder.py).
+python-docx==1.1.2

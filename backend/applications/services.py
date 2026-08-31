@@ -9,8 +9,12 @@ from django.db.models import Count
 from .models import JobApplication, JobLead, Status, LeadStatus
 
 
-def pipeline_stats():
-    """Return a dict of pipeline metrics used by the dashboard's tiles + funnel.
+def pipeline_stats(user):
+    """Return pipeline metrics for ONE user's dashboard (tiles + funnel).
+
+    Every count is scoped to ``user`` so each person sees only their own
+    numbers. Callers pass request.user; there is no global, all-users variant
+    by design.
 
     Shape:
         {
@@ -22,7 +26,7 @@ def pipeline_stats():
           "new_leads": int,
         }
     """
-    apps = JobApplication.objects.all()
+    apps = JobApplication.objects.filter(owner=user)
     by_status = {row["status"]: row["count"] for row in apps.values("status").annotate(count=Count("id"))}
 
     # Cumulative funnel: how many reached each stage or beyond.
@@ -43,5 +47,5 @@ def pipeline_stats():
             "interview": reached_interview,
             "offer": reached_offer,
         },
-        "new_leads": JobLead.objects.filter(status=LeadStatus.NEW).count(),
+        "new_leads": JobLead.objects.filter(owner=user, status=LeadStatus.NEW).count(),
     }

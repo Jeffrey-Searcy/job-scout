@@ -1,6 +1,15 @@
-// Top-level app: loads data from the API and composes the dashboard.
+// Top-level app: gates on login, then loads the logged-in user's data and
+// composes their dashboard. Every data call is scoped server-side to the session
+// user, so each person sees only their own pipeline, leads, and resume.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { getStats, getApplications, getLeads } from "./api/client.js";
+import {
+  getStats,
+  getApplications,
+  getLeads,
+  primeCsrf,
+  getMe,
+  logout,
+} from "./api/client.js";
 import StatTiles from "./components/StatTiles.jsx";
 import PipelineFunnel from "./components/PipelineFunnel.jsx";
 import Filters from "./components/Filters.jsx";
@@ -9,6 +18,8 @@ import ApplicationCard from "./components/ApplicationCard.jsx";
 import ApplicationForm from "./components/ApplicationForm.jsx";
 import LeadsInbox from "./components/LeadsInbox.jsx";
 import AgentControls from "./components/AgentControls.jsx";
+import AuthScreen from "./components/AuthScreen.jsx";
+import ResumePanel from "./components/ResumePanel.jsx";
 
 // Sort key: active first, then by fit (strong<good<stretch), locals nudged up.
 function rank(a) {
@@ -76,6 +87,11 @@ function matchesFilter(app, filter) {
 }
 
 export default function App() {
+  // Auth state. `user` is null when logged out. `authChecked` gates the first
+  // render so we don't flash the login screen before /auth/me/ answers.
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
   const [stats, setStats] = useState(null);
   const [apps, setApps] = useState([]);
   const [leads, setLeads] = useState([]);
@@ -87,6 +103,28 @@ export default function App() {
   // Form state: null = closed, "new" = add, or an app object = edit.
   const [formTarget, setFormTarget] = useState(null);
 
+  // On load: prime the CSRF cookie, then ask who we are. A logged-in user lands
+  // straight on their dashboard; anyone else sees the login screen. We treat any
+  // failure of getMe as "not logged in" (the endpoint 403s when unauthenticated).
+  useEffect(() => {
+    (async () => {
+      try {
+        await primeCsrf();
+      } catch {
+        // If even the CSRF prime fails the API is unreachable; the dashboard's
+        // own refresh() will show the API-down banner. Still show the login UI.
+      }
+      try {
+        const me = await getMe();
+        setUser(me);
+      } catch {
+        setUser(null);
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, []);
+
   // Reload everything from the API. Passed to children so any edit refreshes
   // tiles, funnel, and lists together.
   const refresh = useCallback(async () => {
@@ -94,11 +132,39 @@ export default function App() {
       const [s, a, l] = await Promise.all([getStats(), getApplications(), getLeads()]);
       setStats(s); setApps(a); setLeads(l); setError(null);
     } catch (e) {
+      // A 403 here means the session ended (e.g. logged out in another tab).
+      // Drop back to the login screen instead of showing a stale dashboard.
+      if (e && e.status === 403) {
+        setUser(null);
+        return;
+      }
       setError("Can't reach the API. Is the backend running (docker compose up)?");
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // Load the dashboard data only once we have a logged-in user.
+  useEffect(() => {
+    if (user) refresh();
+  }, [user, refresh]);
+
+  // After a successful login/signup, remember the user and let the data effect
+  // above pull their dashboard.
+  const onAuthed = useCallback((u) => {
+    setUser(u);
+  }, []);
+
+  // Log out: end the server session, clear local state back to the login screen.
+  const onLogout = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      // Even if the network call fails, drop the local user so the UI locks.
+    }
+    setUser(null);
+    setStats(null);
+    setApps([]);
+    setLeads([]);
+  }, []);
 
   // Close the form and refresh after a successful save/delete.
   const onSaved = useCallback(() => { setFormTarget(null); refresh(); }, [refresh]);
@@ -118,16 +184,35 @@ export default function App() {
       .sort(sorter);
   }, [apps, filter, view]);
 
+  // Wait for the auth check before deciding what to show, so we never flash the
+  // login screen at an already-logged-in user.
+  if (!authChecked) {
+    return <div className="wrap"><p className="sub">Loading…</p></div>;
+  }
+
+  // Logged out → the login/signup screen. On success onAuthed swaps us in.
+  if (!user) {
+    return <AuthScreen onAuthed={onAuthed} />;
+  }
+
   return (
     <div className="wrap">
       <header>
-        <h1>{import.meta.env.VITE_APP_TITLE || "Job Scout"}</h1>
+        <div className="header-top">
+          <h1>{import.meta.env.VITE_APP_TITLE || "Job Scout"}</h1>
+          {/* Who's logged in + a way out. */}
+          <div className="user-box">
+            <span className="user-name">{user.username}</span>
+            <button className="btn ghost" onClick={onLogout}>Log out</button>
+          </div>
+        </div>
         <p className="sub">Live pipeline · powered by your local Job Scout app</p>
         <div className="scout"><span className="dot" />Job Scout is on · scans every weekday morning</div>
       </header>
 
       {error && <div className="errbar">{error}</div>}
 
+      <ResumePanel />
       <StatTiles stats={stats} />
       <PipelineFunnel funnel={stats?.funnel} />
       <AgentControls onDone={refresh} />

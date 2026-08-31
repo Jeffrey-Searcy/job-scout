@@ -1,7 +1,13 @@
 // One application rendered as a card: identity, fit, a stage stepper, a
-// follow-up flag, and quick actions (inline status change + edit).
-import React from "react";
-import { updateApplicationStatus } from "../api/client.js";
+// follow-up flag, an attached-resume record, and quick actions (inline status
+// change + edit).
+import React, { useRef, useState } from "react";
+import {
+  updateApplicationStatus,
+  attachApplicationResume,
+  deleteApplicationResume,
+  applicationResumeUrl,
+} from "../api/client.js";
 
 const FIT_LABEL = { strong: "Strong fit", good: "Good fit", stretch: "Stretch" };
 const STATUS_LABEL = {
@@ -44,6 +50,84 @@ function Stepper({ status }) {
           {i < STEPS.length - 1 && <span className={`bar ${i < current ? "done" : ""}`} />}
         </React.Fragment>
       ))}
+    </div>
+  );
+}
+
+// The "resume submitted for this application" record. Shows a download link and
+// filename when a resume is attached, and an attach/replace/remove control. Owns
+// its own upload state so one card's upload never touches its neighbors. `onDone`
+// refreshes the list so the new resume_file block shows up.
+function ResumeAttachment({ app, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const fileInput = useRef(null);
+
+  const attached = app.resume_file; // {filename, download_url, updated_at} or null
+
+  // Upload the picked file, then refresh. Surfaces the server's own message on a
+  // rejection (wrong type / too large) rather than a generic error.
+  async function onPick(e) {
+    const file = e.target.files && e.target.files[0];
+    // Reset the input so picking the same file again still fires onChange.
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await attachApplicationResume(app.id, file);
+      onDone && onDone();
+    } catch (ex) {
+      setErr((ex.data && ex.data.detail) || "Could not attach the resume.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    setErr("");
+    try {
+      await deleteApplicationResume(app.id);
+      onDone && onDone();
+    } catch (ex) {
+      setErr((ex.data && ex.data.detail) || "Could not remove the resume.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="resattach">
+      {/* Hidden real input; the visible buttons trigger it. Accepts PDF + .docx,
+          the two formats the attach endpoint allows. */}
+      <input
+        ref={fileInput}
+        type="file"
+        accept=".pdf,.docx"
+        style={{ display: "none" }}
+        onChange={onPick}
+      />
+      {attached ? (
+        <>
+          <a className="apply" href={applicationResumeUrl(app.id)}>
+            ⬇ Resume used: {attached.filename}
+          </a>
+          <span className="resattach-actions">
+            <button className="btn ghost" disabled={busy} onClick={() => fileInput.current.click()}>
+              {busy ? "Working…" : "Replace"}
+            </button>
+            <button className="btn ghost" disabled={busy} onClick={remove}>
+              Remove
+            </button>
+          </span>
+        </>
+      ) : (
+        <button className="btn ghost" disabled={busy} onClick={() => fileInput.current.click()}>
+          {busy ? "Attaching…" : "📎 Attach resume used"}
+        </button>
+      )}
+      {err && <div className="resattach-err">{err}</div>}
     </div>
   );
 }
@@ -94,6 +178,8 @@ export default function ApplicationCard({ app, onEdit, onChanged }) {
         </select>
         {app.link && <a className="apply" href={app.link} target="_blank" rel="noopener noreferrer">View posting →</a>}
       </div>
+
+      <ResumeAttachment app={app} onDone={onChanged} />
     </div>
   );
 }

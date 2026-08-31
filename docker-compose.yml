@@ -22,9 +22,15 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: "5432"
+      # Uploaded resume PDFs are written here, onto the shared 'media' volume the
+      # frontend also mounts (read-only) so nginx can serve them at /media/.
+      MEDIA_ROOT: /media
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Persist uploaded resumes across restarts and share them with the frontend.
+      - media:/media
     ports:
       - "${BACKEND_PORT:-8000}:8000"   # Django API (host port configurable)
 
@@ -36,8 +42,12 @@ services:
         VITE_APP_TITLE: ${APP_TITLE:-Job Scout}
     depends_on:
       - backend
+    # No media volume here on purpose: nginx must NOT serve resume PDFs. They are
+    # private per user and go out only through Django's auth-gated endpoints, so
+    # the frontend never needs filesystem access to them.
     ports:
       - "${FRONTEND_PORT:-8080}:80"    # Dashboard (host port configurable)
 
 volumes:
   pgdata:
+  media:
