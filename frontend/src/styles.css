@@ -153,3 +153,93 @@ a.apply:hover{text-decoration:underline;}
   background:var(--bg);color:var(--ink);}
 .action-msg{margin-top:12px;font-size:13px;color:var(--ink2);line-height:1.5;
   background:var(--accent-soft);border-radius:10px;padding:10px 12px;}
+
+/* ---- Scan / job progress indicator ---- */
+/* Live panel shown while a scan or add-from-link job is queued or running. */
+.jobprog{margin-top:12px;background:var(--accent-soft);border-radius:12px;padding:12px 14px;}
+.jobprog-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.jobprog-title{display:inline-flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;color:var(--accent);}
+.jobprog-time{font-size:12.5px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums;}
+/* The bar is an HONEST indeterminate animation — the worker reports no % so we
+   do not fake one. A soft accent shuttle slides across to say "still working". */
+.jobprog-bar{position:relative;height:8px;margin-top:10px;border-radius:99px;overflow:hidden;
+  background:color-mix(in srgb,var(--accent) 16%,transparent);}
+.jobprog-fill{position:absolute;top:0;bottom:0;width:40%;border-radius:99px;background:var(--accent);
+  animation:jobshuttle 1.3s ease-in-out infinite;}
+@keyframes jobshuttle{
+  0%{left:-42%;} 100%{left:102%;}
+}
+.jobprog-hint{margin-top:9px;font-size:12.5px;color:var(--ink2);line-height:1.45;}
+
+/* Terminal banner: one clear final state (done / failed / still-working). */
+.jobdone{margin-top:12px;border-radius:12px;padding:11px 14px;display:flex;flex-direction:column;gap:3px;
+  font-size:13px;line-height:1.5;border:1px solid transparent;}
+.jobdone strong{font-size:13.5px;}
+.jobdone span{color:var(--ink2);}
+.jobdone.ok{background:var(--strong-bg);border-color:color-mix(in srgb,var(--strong) 35%,transparent);}
+.jobdone.ok strong{color:var(--strong);}
+.jobdone.fail{background:var(--stretch-bg);border-color:color-mix(in srgb,var(--stretch) 40%,transparent);}
+.jobdone.fail strong{color:#c0392b;}
+.jobdone.warn{background:var(--good-bg);border-color:color-mix(in srgb,var(--good) 35%,transparent);}
+.jobdone.warn strong{color:var(--good);}
+/* Respect users who ask the OS to reduce motion: hold the bar still. */
+@media (prefers-reduced-motion:reduce){
+  .jobprog-fill{animation:none;width:100%;left:0;opacity:.55;}
+  .spin{animation:none;}
+}
+
+/* A lead's finished tailored resume: download link, the keywords worked in, and
+   a one-line "save as PDF" hint. Uses the same success tokens as jobdone.ok so it
+   reads as a positive, ready-to-use result. */
+.tailored{margin-top:11px;border-top:1px dashed var(--border);padding-top:10px;
+  display:flex;flex-direction:column;gap:6px;}
+.tailored .apply{color:var(--strong);}
+.tailored .kw{font-size:11.5px;color:var(--ink2);line-height:1.5;}
+.tailored .kw-label{font-weight:700;color:var(--muted);}
+.tailored-hint{font-size:11.5px;color:var(--muted);}
+
+/* The "resume submitted for this application" record on a pipeline card. Sits
+   below the status row, separated by a dashed line like the tailored block, so a
+   user can see and download exactly which resume went with this application. */
+.resattach{margin-top:11px;border-top:1px dashed var(--border);padding-top:10px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+.resattach .apply{color:var(--strong);}
+.resattach-actions{display:inline-flex;gap:6px;}
+.resattach-err{flex-basis:100%;font-size:11.5px;color:#c0392b;}
+
+/* ---- Layer 5: auth + per-user (login screen, header user box, resume) ---- */
+
+/* Header row holding the title and the logged-in user + logout button. */
+.header-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+.user-box{display:flex;align-items:center;gap:10px;}
+.user-name{font-size:13px;font-weight:700;color:var(--ink2);
+  background:var(--accent-soft);color:var(--accent);padding:4px 10px;border-radius:999px;}
+
+/* Login / sign-up screen: a single centered card. */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+.auth-card{background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);
+  width:100%;max-width:400px;padding:28px 26px 22px;display:flex;flex-direction:column;gap:14px;}
+.auth-card h1{margin:0;font-size:24px;letter-spacing:-.02em;}
+.auth-sub{margin:0;color:var(--ink2);font-size:14px;line-height:1.5;}
+.auth-form{display:flex;flex-direction:column;gap:12px;margin-top:4px;}
+.auth-form label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--ink2);}
+.auth-form input{font:inherit;font-size:14px;padding:10px 11px;border:1px solid var(--border);
+  border-radius:9px;background:var(--bg);color:var(--ink);}
+.auth-form input:focus{outline:none;border-color:var(--accent);}
+.auth-form .btn{margin-top:4px;padding:10px 14px;}
+.auth-error{background:#fdecea;color:#b3261e;border-radius:9px;padding:9px 11px;font-size:13px;line-height:1.4;}
+@media (prefers-color-scheme: dark){ .auth-error{background:#3a1512;color:#f2a59d;} }
+.auth-toggle{background:transparent;border:none;color:var(--accent);font:inherit;font-size:13px;font-weight:600;
+  cursor:pointer;padding:2px;align-self:center;}
+.auth-toggle:hover{text-decoration:underline;}
+
+/* Resume panel: status badge, hint text, upload/replace/remove actions. */
+.resume-panel .panel-head{align-items:center;}
+.resume-badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;}
+.resume-badge.ok{background:var(--strong-bg);color:var(--strong);}
+.resume-badge.pending{background:var(--stretch-bg);color:var(--stretch);}
+.resume-hint{color:var(--ink2);font-size:13px;line-height:1.55;margin:0 0 12px;}
+.resume-error{background:#fdecea;color:#b3261e;border-radius:9px;padding:9px 11px;font-size:13px;
+  line-height:1.4;margin-bottom:12px;}
+@media (prefers-color-scheme: dark){ .resume-error{background:#3a1512;color:#f2a59d;} }
+.resume-actions{display:flex;gap:8px;flex-wrap:wrap;}

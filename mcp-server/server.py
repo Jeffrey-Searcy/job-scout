@@ -25,13 +25,35 @@ from mcp.server.fastmcp import FastMCP
 # against localhost, a docker host, or a remote deployment.
 API = os.environ.get("JOBSCOUT_API_URL", "http://localhost:8000/api").rstrip("/")
 
+# Per-task write credential, set by the host worker for a single scan/enrich run
+# (agent_worker.py exports JOBSCOUT_TASK_TOKEN before launching Claude). When
+# present, the write tools (add_lead / add_application) target the worker's
+# token-scoped endpoints so every save is attributed to that task's owner. When
+# absent (e.g. a human using this server from Claude Desktop against their own
+# login session), the tools fall back to the session-authenticated endpoints.
+#
+# This is NOT a silent data fallback: the token only ever CHANGES WHICH URL and
+# header are used. It never invents an owner or hides a failure — a missing token
+# on the worker path simply means the server is being used interactively instead.
+TASK_TOKEN = os.environ.get("JOBSCOUT_TASK_TOKEN", "").strip()
+
+# Header name the worker API reads the task token from. Must match
+# TASK_TOKEN_HEADER in backend/applications/worker_api.py.
+TASK_TOKEN_HEADER = "X-Task-Token"
+
 # The MCP server instance; the name is what shows up in the client's tool list.
 mcp = FastMCP("job-scout")
 
 
 def _client():
-    """Return an httpx client with a sane timeout for local API calls."""
-    return httpx.Client(base_url=API, timeout=15.0)
+    """Return an httpx client with a sane timeout for local API calls.
+
+    When a task token is set, every request carries it in the X-Task-Token
+    header so the worker API can scope writes to the task's owner. Reads that go
+    through the session-authenticated endpoints ignore the header harmlessly.
+    """
+    headers = {TASK_TOKEN_HEADER: TASK_TOKEN} if TASK_TOKEN else {}
+    return httpx.Client(base_url=API, timeout=15.0, headers=headers)
 
 
 @mcp.tool()
@@ -63,8 +85,11 @@ def add_application(company: str, role: str, link: str = "", status: str = "appl
     payload = dict(company=company, role=role, link=link, status=status,
                    work_mode=work_mode, location=location, is_local=is_local,
                    fit=fit, notes=notes)
+    # On the worker path the task token scopes this write to the task's owner via
+    # the token-authenticated endpoint; interactively it uses the session path.
+    path = "/worker/applications/" if TASK_TOKEN else "/applications/"
     with _client() as c:
-        return c.post("/applications/", json=payload).json()
+        return c.post(path, json=payload).json()
 
 
 @mcp.tool()
@@ -97,8 +122,11 @@ def add_lead(company: str, title: str, url: str = "", location: str = "",
                    summary=summary, is_local=is_local)
     if discovered_date:
         payload["discovered_date"] = discovered_date
+    # On the worker path the task token scopes this write to the task's owner via
+    # the token-authenticated endpoint; interactively it uses the session path.
+    path = "/worker/leads/" if TASK_TOKEN else "/leads/"
     with _client() as c:
-        resp = c.post("/leads/", json=payload)
+        resp = c.post(path, json=payload)
         if resp.status_code >= 400:
             # Most likely a duplicate; surface a friendly note instead of raising.
             return {"skipped": True, "reason": resp.text, "company": company, "title": title}
